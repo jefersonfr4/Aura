@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#080808"> <title>Aura - One Line Lyrics</title>
+    
+    <link rel="manifest" href="manifest.json">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;800&display=swap');
+        
+        body { background-color: #080808; color: #e2e2e2; font-family: 'Plus Jakarta Sans', sans-serif; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+        .glass { background: rgba(15, 15, 15, 0.8); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        
+        .viewport { display: flex; flex: 1; position: relative; transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); overflow: hidden; }
+        #main-content { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+
+        /* --- SISTEMA DE LETRAS UMA APÓS A OUTRA --- */
+        #lyrics-overlay { 
+            position: absolute; 
+            inset: 0; 
+            display: none; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            z-index: 30; 
+            text-align: center;
+        }
+        #lyrics-overlay.active { display: flex; }
+
+        .lyric-line { 
+            font-size: 2.5rem; 
+            line-height: 1.2; 
+            transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1); 
+            opacity: 0; 
+            filter: blur(15px); 
+            transform: translateY(40px) scale(0.9); 
+            position: absolute; 
+            width: 80%;
+            pointer-events: none;
+            display: none;
+        }
+
+        .lyric-line.active { 
+            display: block;
+            opacity: 1; 
+            filter: blur(0); 
+            color: #10b981; 
+            transform: translateY(0) scale(1); 
+            font-weight: 800; 
+            text-shadow: 0 0 40px rgba(16, 185, 129, 0.4); 
+        }
+
+        .lyric-line.past {
+            display: block;
+            opacity: 0;
+            filter: blur(10px);
+            transform: translateY(-40px) scale(0.9);
+        }
+
+        aside { width: 380px; height: 100%; transition: transform 0.5s ease; position: absolute; right: 0; top: 0; z-index: 40; }
+        .drawer-closed aside { transform: translateX(330px); }
+        .drawer-closed #main-content { padding-right: 50px; }
+
+        #equalizer-container { width: 100%; height: 150px; display: flex; align-items: flex-end; justify-content: center; gap: 3px; transition: all 0.5s; }
+        .bar { width: 8px; background: linear-gradient(to top, #064e3b, #10b981); border-radius: 2px; }
+        
+        .song-row { transition: 0.2s; border-radius: 12px; cursor: pointer; }
+        .song-row.active { background: rgba(16, 185, 129, 0.15); color: #10b981; font-weight: bold; }
+        .btn-toggle.active { color: #10b981 !important; text-shadow: 0 0 10px rgba(16, 185, 129, 0.5); }
+        
+        input[type="range"] { accent-color: #10b981; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div id="app-viewport" class="viewport drawer-closed">
+        <main id="main-content">
+            <div id="lyrics-overlay">
+                <div id="lyrics-container" class="relative w-full h-full flex items-center justify-center">
+                    </div>
+            </div>
+
+            <div id="equalizer-container"></div>
+            
+            <div id="info-center" class="text-center mt-10 z-10 transition-all duration-700">
+                <h2 id="display-title" class="text-5xl font-black italic text-emerald-50 tracking-tighter">AURA</h2>
+                <p id="display-status" class="text-[10px] text-emerald-500 font-bold tracking-[0.4em] uppercase mt-4">Pronto para tocar</p>
+            </div>
+        </main>
+
+        <aside class="glass border-l border-white/5 flex flex-row">
+            <div onclick="toggleDrawer()" class="w-[50px] h-full flex items-center justify-center bg-black/20 hover:bg-emerald-500/10 cursor-pointer group">
+                <i class="fas fa-chevron-left text-white/20 group-hover:text-emerald-500 transition-all" id="drawer-icon"></i>
+            </div>
+            <div class="flex-1 flex flex-col overflow-hidden">
+                <div class="p-6 space-y-4">
+                    <h1 class="text-xs font-black text-emerald-500 uppercase tracking-[0.2em]">Sua Biblioteca</h1>
+                    <button onclick="document.getElementById('folderInput').click()" class="w-full bg-emerald-500 text-black py-3 rounded-xl font-bold text-[11px] hover:bg-emerald-400 transition uppercase">Abrir Pasta de Músicas</button>
+                    <input type="file" id="folderInput" webkitdirectory directory multiple class="hidden">
+                    <input type="text" id="searchInput" oninput="handleSearch()" placeholder="Procurar música..." class="w-full bg-white/5 border border-white/10 py-3 px-4 rounded-xl text-xs focus:outline-none focus:border-emerald-500/50">
+                </div>
+                <div id="playlist" class="flex-1 overflow-y-auto px-4 pb-20 space-y-1"></div>
+            </div>
+        </aside>
+    </div>
+
+    <footer class="h-32 glass border-t border-white/5 px-10 flex items-center justify-between z-50">
+        <div class="w-1/4">
+            <h4 id="footerTrack" class="font-bold truncate text-sm">Aura Player</h4>
+            <p id="footerFolder" class="text-[9px] opacity-40 truncate mt-1">Nenhum arquivo carregado</p>
+        </div>
+
+        <div class="flex flex-col items-center gap-4 w-2/4">
+            <div class="flex items-center gap-8">
+                <button id="shuffleBtn" onclick="toggleShuffle()" class="btn-toggle text-xs opacity-50 hover:opacity-100"><i class="fas fa-shuffle"></i></button>
+                <button onclick="prev()" class="text-white/40 hover:text-white transition"><i class="fas fa-backward-step"></i></button>
+                <button id="playBtn" onclick="handlePlayPause()" class="w-14 h-14 bg-white text-black rounded-full flex items-center justify-center hover:scale-105 transition shadow-xl"><i class="fas fa-play ml-1"></i></button>
+                <button onclick="next()" class="text-white/40 hover:text-white transition"><i class="fas fa-forward-step"></i></button>
+                <button id="lyricBtn" onclick="toggleLyrics()" class="btn-toggle text-xs opacity-50 hover:opacity-100"><i class="fas fa-quote-right"></i></button>
+            </div>
+            <div class="w-full flex items-center gap-4">
+                <span id="timeCurrent" class="text-[10px] font-mono opacity-40">0:00</span>
+                <input type="range" id="seek" oninput="handleSeek(this.value)" class="flex-1 h-1 bg-white/10 rounded-full appearance-none">
+                <span id="timeTotal" class="text-[10px] font-mono opacity-40">0:00</span>
+            </div>
+        </div>
+
+        <div class="w-1/4 flex justify-end">
+            <i class="fas fa-volume-low text-[10px] opacity-30 mr-3 mt-1"></i>
+            <input type="range" id="vol" oninput="handleVolume(this.value)" class="w-20 h-1" value="80">
+        </div>
+    </footer>
+
+    <audio id="player" crossorigin="anonymous"></audio>
+
+    <script>
+        // O JavaScript continua o mesmo código que você enviou...
+        const audio = document.getElementById('player');
+        const playlistUI = document.getElementById('playlist');
+        const lyricsContainer = document.getElementById('lyrics-container');
+        const lyricsOverlay = document.getElementById('lyrics-overlay');
+        const eqContainer = document.getElementById('equalizer-container');
+        const infoCenter = document.getElementById('info-center');
+
+        let allFiles = [], allSongs = [], currentIdx = -1, isShuffle = false, isLyricsActive = false;
+        let currentLyrics = [], audioCtx, analyzer, dataArray, barElements = [];
+
+        function toggleDrawer() {
+            document.getElementById('app-viewport').classList.toggle('drawer-closed');
+        }
+
+        function toggleLyrics() {
+            isLyricsActive = !isLyricsActive;
+            lyricsOverlay.classList.toggle('active', isLyricsActive);
+            document.getElementById('lyricBtn').classList.toggle('active', isLyricsActive);
+            infoCenter.style.opacity = isLyricsActive ? '0' : '1';
+            eqContainer.style.opacity = isLyricsActive ? '0.1' : '1';
+        }
+
+        document.getElementById('folderInput').addEventListener('change', (e) => {
+            allFiles = Array.from(e.target.files);
+            allSongs = allFiles.filter(f => f.type.startsWith('audio/') || f.name.match(/\.(mp3|wav|ogg|flac|m4a)$/i));
+            renderPlaylist(allSongs);
+            if (allSongs.length > 0) playTrack(0);
+        });
+
+        function renderPlaylist(songs) {
+            playlistUI.innerHTML = songs.map((s, i) => `
+                <div class="song-row p-4 flex flex-col ${currentIdx === allSongs.indexOf(s) ? 'active' : ''}" onclick="playTrack(${allSongs.indexOf(s)})">
+                    <span class="text-xs truncate">${s.name.replace(/\.[^/.]+$/, "")}</span>
+                </div>
+            `).join('');
+        }
+
+        async function playTrack(index) {
+            if (index < 0 || index >= allSongs.length) return;
+            initAudioEngine();
+            currentIdx = index;
+            const song = allSongs[index];
+            audio.src = URL.createObjectURL(song);
+            audio.play();
+            
+            document.getElementById('playBtn').innerHTML = '<i class="fas fa-pause"></i>';
+            document.getElementById('display-title').innerText = song.name.replace(/\.[^/.]+$/, "");
+            document.getElementById('footerTrack').innerText = song.name.replace(/\.[^/.]+$/, "");
+            
+            renderPlaylist(allSongs);
+            loadLRC(song);
+        }
+
+        async function loadLRC(songFile) {
+            currentLyrics = [];
+            lyricsContainer.innerHTML = '';
+            const baseName = songFile.name.replace(/\.[^/.]+$/, "").toLowerCase().trim();
+            const lrcFile = allFiles.find(f => f.name.toLowerCase().trim() === baseName + ".lrc");
+            
+            if (lrcFile) {
+                const text = await lrcFile.text();
+                const lines = text.split('\n');
+                const timeReg = /\[(\d+):(\d+)[.:](\d+)\]/;
+                
+                currentLyrics = lines.map(line => {
+                    const match = timeReg.exec(line);
+                    if (match) {
+                        const sec = parseInt(match[1]) * 60 + parseInt(match[2]) + (parseInt(match[3]) / 100);
+                        return { time: sec, text: line.replace(timeReg, '').trim() };
+                    }
+                    return null;
+                }).filter(l => l && l.text);
+                
+                lyricsContainer.innerHTML = currentLyrics.map((l, i) => `<p id="line-${i}" class="lyric-line">${l.text}</p>`).join('');
+            }
+        }
+
+        audio.ontimeupdate = () => {
+            document.getElementById('timeCurrent').innerText = formatTime(audio.currentTime);
+            document.getElementById('timeTotal').innerText = formatTime(audio.duration);
+            document.getElementById('seek').value = (audio.currentTime / audio.duration) * 100;
+            
+            if (currentLyrics.length > 0) {
+                const activeIdx = currentLyrics.findLastIndex(l => audio.currentTime >= l.time);
+                if (activeIdx !== -1) {
+                    const lines = document.querySelectorAll('.lyric-line');
+                    lines.forEach((el, index) => {
+                        el.classList.remove('active', 'past');
+                        if (index === activeIdx) {
+                            el.classList.add('active');
+                        } else if (index < activeIdx) {
+                            el.classList.add('past');
+                        }
+                    });
+                }
+            }
+        };
+
+        function handlePlayPause() {
+            if (audio.paused) { audio.play(); document.getElementById('playBtn').innerHTML = '<i class="fas fa-pause"></i>'; }
+            else { audio.pause(); document.getElementById('playBtn').innerHTML = '<i class="fas fa-play ml-1"></i>'; }
+        }
+
+        function next() { playTrack(isShuffle ? Math.floor(Math.random() * allSongs.length) : (currentIdx + 1) % allSongs.length); }
+        function prev() { playTrack((currentIdx - 1 + allSongs.length) % allSongs.length); }
+        function handleVolume(v) { audio.volume = v / 100; }
+        function handleSeek(v) { audio.currentTime = (v / 100) * audio.duration; }
+        function formatTime(s) { const m=Math.floor(s/60), r=Math.floor(s%60); return `${m}:${r<10?'0':''}${r}`; }
+        function toggleShuffle() { isShuffle = !isShuffle; document.getElementById('shuffleBtn').classList.toggle('active', isShuffle); }
+
+        function initAudioEngine() {
+            if (audioCtx) return;
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            analyzer = audioCtx.createAnalyser();
+            const source = audioCtx.createMediaElementSource(audio);
+            source.connect(analyzer);
+            analyzer.connect(audioCtx.destination);
+            analyzer.fftSize = 128;
+            dataArray = new Uint8Array(analyzer.frequencyBinCount);
+            for (let i = 0; i < 30; i++) {
+                const bar = document.createElement('div');
+                bar.className = 'bar';
+                eqContainer.appendChild(bar);
+            }
+            barElements = document.querySelectorAll('.bar');
+            renderFrame();
+        }
+
+        function renderFrame() {
+            requestAnimationFrame(renderFrame);
+            if (!analyzer) return;
+            analyzer.getByteFrequencyData(dataArray);
+            barElements.forEach((bar, i) => {
+                const val = dataArray[i];
+                bar.style.height = `${(val / 255) * 100}%`;
+            });
+        }
+    </script>
+</body>
+</html>
