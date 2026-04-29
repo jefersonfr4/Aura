@@ -21,7 +21,6 @@
         .viewport { display: flex; flex: 1; position: relative; transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); overflow: hidden; }
         #main-content { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; overflow: hidden; }
 
-        /* --- SISTEMA DE LETRAS UMA APÓS A OUTRA --- */
         #lyrics-overlay { 
             position: absolute; 
             inset: 0; 
@@ -83,7 +82,7 @@
         <main id="main-content">
             <div id="lyrics-overlay">
                 <div id="lyrics-container" class="relative w-full h-full flex items-center justify-center">
-                    </div>
+                </div>
             </div>
 
             <div id="equalizer-container"></div>
@@ -150,6 +149,11 @@
         let allFiles = [], allSongs = [], currentIdx = -1, isShuffle = false, isLyricsActive = false;
         let currentLyrics = [], audioCtx, analyzer, dataArray, barElements = [];
 
+        // --- CORREÇÃO: Tocar próxima automaticamente ao acabar ---
+        audio.addEventListener('ended', () => {
+            next();
+        });
+
         function toggleDrawer() {
             document.getElementById('app-viewport').classList.toggle('drawer-closed');
         }
@@ -179,11 +183,17 @@
 
         async function playTrack(index) {
             if (index < 0 || index >= allSongs.length) return;
+            
             initAudioEngine();
             currentIdx = index;
             const song = allSongs[index];
+            
+            // Limpa letras anteriores antes de carregar a nova
+            lyricsContainer.innerHTML = '';
+            currentLyrics = [];
+
             audio.src = URL.createObjectURL(song);
-            audio.play();
+            audio.play().catch(e => console.log("Erro ao dar play:", e));
             
             document.getElementById('playBtn').innerHTML = '<i class="fas fa-pause"></i>';
             document.getElementById('display-title').innerText = song.name.replace(/\.[^/.]+$/, "");
@@ -194,8 +204,6 @@
         }
 
         async function loadLRC(songFile) {
-            currentLyrics = [];
-            lyricsContainer.innerHTML = '';
             const baseName = songFile.name.replace(/\.[^/.]+$/, "").toLowerCase().trim();
             const lrcFile = allFiles.find(f => f.name.toLowerCase().trim() === baseName + ".lrc");
             
@@ -218,9 +226,11 @@
         }
 
         audio.ontimeupdate = () => {
-            document.getElementById('timeCurrent').innerText = formatTime(audio.currentTime);
-            document.getElementById('timeTotal').innerText = formatTime(audio.duration);
-            document.getElementById('seek').value = (audio.currentTime / audio.duration) * 100;
+            if (!isNaN(audio.duration)) {
+                document.getElementById('timeCurrent').innerText = formatTime(audio.currentTime);
+                document.getElementById('timeTotal').innerText = formatTime(audio.duration);
+                document.getElementById('seek').value = (audio.currentTime / audio.duration) * 100;
+            }
             
             if (currentLyrics.length > 0) {
                 const activeIdx = currentLyrics.findLastIndex(l => audio.currentTime >= l.time);
@@ -239,33 +249,58 @@
         };
 
         function handlePlayPause() {
-            if (audio.paused) { audio.play(); document.getElementById('playBtn').innerHTML = '<i class="fas fa-pause"></i>'; }
-            else { audio.pause(); document.getElementById('playBtn').innerHTML = '<i class="fas fa-play ml-1"></i>'; }
+            if (audio.paused) { 
+                audio.play(); 
+                document.getElementById('playBtn').innerHTML = '<i class="fas fa-pause"></i>'; 
+            } else { 
+                audio.pause(); 
+                document.getElementById('playBtn').innerHTML = '<i class="fas fa-play ml-1"></i>'; 
+            }
         }
 
-        function next() { playTrack(isShuffle ? Math.floor(Math.random() * allSongs.length) : (currentIdx + 1) % allSongs.length); }
-        function prev() { playTrack((currentIdx - 1 + allSongs.length) % allSongs.length); }
+        function next() { 
+            if (allSongs.length === 0) return;
+            let index = isShuffle ? Math.floor(Math.random() * allSongs.length) : (currentIdx + 1) % allSongs.length;
+            playTrack(index); 
+        }
+
+        function prev() { 
+            if (allSongs.length === 0) return;
+            let index = (currentIdx - 1 + allSongs.length) % allSongs.length;
+            playTrack(index); 
+        }
+
         function handleVolume(v) { audio.volume = v / 100; }
-        function handleSeek(v) { audio.currentTime = (v / 100) * audio.duration; }
+        function handleSeek(v) { if (!isNaN(audio.duration)) audio.currentTime = (v / 100) * audio.duration; }
         function formatTime(s) { const m=Math.floor(s/60), r=Math.floor(s%60); return `${m}:${r<10?'0':''}${r}`; }
         function toggleShuffle() { isShuffle = !isShuffle; document.getElementById('shuffleBtn').classList.toggle('active', isShuffle); }
 
+        function handleSearch() {
+            const term = document.getElementById('searchInput').value.toLowerCase();
+            const filtered = allSongs.filter(s => s.name.toLowerCase().includes(term));
+            renderPlaylist(filtered);
+        }
+
         function initAudioEngine() {
             if (audioCtx) return;
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            analyzer = audioCtx.createAnalyser();
-            const source = audioCtx.createMediaElementSource(audio);
-            source.connect(analyzer);
-            analyzer.connect(audioCtx.destination);
-            analyzer.fftSize = 128;
-            dataArray = new Uint8Array(analyzer.frequencyBinCount);
-            for (let i = 0; i < 30; i++) {
-                const bar = document.createElement('div');
-                bar.className = 'bar';
-                eqContainer.appendChild(bar);
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                analyzer = audioCtx.createAnalyser();
+                const source = audioCtx.createMediaElementSource(audio);
+                source.connect(analyzer);
+                analyzer.connect(audioCtx.destination);
+                analyzer.fftSize = 128;
+                dataArray = new Uint8Array(analyzer.frequencyBinCount);
+                for (let i = 0; i < 30; i++) {
+                    const bar = document.createElement('div');
+                    bar.className = 'bar';
+                    eqContainer.appendChild(bar);
+                }
+                barElements = document.querySelectorAll('.bar');
+                renderFrame();
+            } catch (e) {
+                console.log("AudioContext não pôde ser iniciado:", e);
             }
-            barElements = document.querySelectorAll('.bar');
-            renderFrame();
         }
 
         function renderFrame() {
